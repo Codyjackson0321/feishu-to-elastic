@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "description": "Feishu audit logs: GeoIP and ASN enrichment of source.ip",
+  "_meta": {
+    "managed_by": "feishutoelastic"
+  },
+  "processors": [
+    {
+      "set": {
+        "tag": "set_event_ingested",
+        "field": "event.ingested",
+        "copy_from": "_ingest.timestamp"
+      }
+    },
+    {
+      "geoip": {
+        "tag": "geoip_source_ip",
+        "field": "source.ip",
+        "target_field": "source.geo",
+        "ignore_missing": true
+      }
+    },
+    {
+      "geoip": {
+        "tag": "geoip_source_asn",
+        "database_file": "GeoLite2-ASN.mmdb",
+        "field": "source.ip",
+        "target_field": "source.as",
+        "properties": ["asn", "organization_name"],
+        "ignore_missing": true
+      }
+    },
+    {
+      "rename": {
+        "tag": "rename_source_as_number",
+        "field": "source.as.asn",
+        "target_field": "source.as.number",
+        "ignore_missing": true
+      }
+    },
+    {
+      "rename": {
+        "tag": "rename_source_as_organization",
+        "field": "source.as.organization_name",
+        "target_field": "source.as.organization.name",
+        "ignore_missing": true
+      }
+    },
+    {
+      "set": {
+        "tag": "fallback_source_city",
+        "description": "Use Feishu's city when GeoIP has none (private IPs, coarse mobile ranges)",
+        "if": "ctx.source?.geo?.city_name == null && ctx.feishu?.audit?.city != null",
+        "field": "source.geo.city_name",
+        "copy_from": "feishu.audit.city"
+      }
+    },
+    {
+      "pipeline": {
+        "name": "global@custom",
+        "ignore_missing_pipeline": true
+      }
+    },
+    {
+      "pipeline": {
+        "name": "logs@custom",
+        "ignore_missing_pipeline": true
+      }
+    },
+    {
+      "pipeline": {
+        "name": "logs-feishu.audit@custom",
+        "ignore_missing_pipeline": true
+      }
+    }
+  ],
+  "on_failure": [
+    {
+      "set": {
+        "field": "event.kind",
+        "value": "pipeline_error"
+      }
+    },
+    {
+      "append": {
+        "field": "error.message",
+        "value": "Processor {{{_ingest.on_failure_processor_type}}} with tag {{{_ingest.on_failure_processor_tag}}} failed: {{{_ingest.on_failure_message}}}"
+      }
+    }
+  ]
+}
